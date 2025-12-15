@@ -1,7 +1,7 @@
 # main.py
 """
-Entry point untuk Game NIM Misère - AI vs AI
-Menggunakan multiple windows: Setup -> Game -> Result
+Entry point untuk Game NIM Misère
+Support 2 mode: Pemain vs Komputer & Komputer vs Komputer
 """
 
 from gui.game_gui import SetupWindow, GameWindow, ResultWindow
@@ -12,10 +12,10 @@ def main():
     Fungsi utama untuk menjalankan aplikasi.
     
     Flow:
-    1. SetupWindow - User pilih settings
+    1. SetupWindow - User pilih mode & settings
     2. GameWindow - Jalankan pertandingan
-    3. ResultWindow - Tampilkan hasil
-    4. Loop back ke SetupWindow jika user mau main lagi
+    3. ResultWindow - Tampilkan hasil (untuk AI vs AI)
+       atau kembali ke Setup (untuk Player vs AI)
     """
     def on_start_match(settings):
         """Callback ketika user start match dari setup window."""
@@ -23,7 +23,7 @@ def main():
         game.run()
     
     def on_match_finish(summary, settings):
-        """Callback ketika match selesai."""
+        """Callback ketika match AI vs AI selesai."""
         result = ResultWindow(summary, settings)
         result.run()
     
