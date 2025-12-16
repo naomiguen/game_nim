@@ -16,13 +16,13 @@ DIFFICULTY_LEVELS = {
     },
     "Hard": {
         "description": "Tantangan berat dengan 500 stik",
-        "piles": [10, 20, 30, 40, 50, 60, 70, 80, 90, 50],
+        "piles": [10, 20, 30, 40, 50, 60, 70, 80, 90, 110],
         "total_sticks": 500
     },
     "Extreme": {
         "description": "Tantangan ekstrem dengan 2000 stik",
-        "piles": [100, 150, 200, 250, 300, 350, 250, 200, 150, 50],
-        "total_sticks": 2000
+        "piles": [50, 100, 150, 200, 250, 300, 350, 400, 450, 500],  # ← Terurut
+        "total_sticks": 2750
     }
 }
 

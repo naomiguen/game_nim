@@ -1,4 +1,3 @@
-
 """
 Controller untuk menjalankan pertandingan komputer vs komputer
 """
@@ -20,7 +19,7 @@ class GameController:
         
         Args:
             initial_state: List berisi jumlah stik di setiap tumpukan
-            player1_algo: str, "Reflex" atau "Alpha-Beta"
+            player1_algo: str, "Reflex" atau "Alpha-Beta" atau "Human"
             player2_algo: str, "Reflex" atau "Alpha-Beta"
         """
         self.initial_state = initial_state.copy()
@@ -100,7 +99,7 @@ class GameController:
         # Cek apakah game selesai
         if is_terminal(self.state):
             self.game_over = True
-            # Pemain yang mengambil stik terakhir = kalah
+            # Pemain yang mengambil stik terakhir = kalah (Misère)
             self.winner = 2 if self.current_player == 1 else 1
             self.match_duration = time.time() - self.match_start_time
             
@@ -121,8 +120,11 @@ class GameController:
         Returns:
             dict: Ringkasan lengkap pertandingan
         """
-        if not self.game_over:
-            return None
+        # Jika game belum selesai, hitung durasi sementara
+        if not self.game_over and self.match_start_time:
+            current_duration = time.time() - self.match_start_time
+        else:
+            current_duration = self.match_duration
         
         # Hitung statistik per pemain
         p1_moves = [m for m in self.move_history if m["player"] == 1]
@@ -135,10 +137,10 @@ class GameController:
         p2_total_nodes = sum(m["stats"].get("nodes_explored", 0) for m in p2_moves)
         
         summary = {
-            "winner": self.winner,
-            "loser": 2 if self.winner == 1 else 1,
+            "winner": self.winner if self.game_over else None,
+            "loser": (2 if self.winner == 1 else 1) if self.game_over else None,
             "total_moves": self.total_moves,
-            "match_duration_sec": self.match_duration,
+            "match_duration_sec": current_duration,
             "player1": {
                 "algorithm": self.player1_algo,
                 "moves_count": len(p1_moves),

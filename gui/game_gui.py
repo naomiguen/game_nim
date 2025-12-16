@@ -1,757 +1,688 @@
-# gui/game_gui.py
-"""
-GUI untuk Game NIM - Komputer vs Komputer
-Menggunakan multiple windows untuk setup, game, dan hasil
-"""
-
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, messagebox
+import time
+
+from config.settings import DIFFICULTY_LEVELS, ALGORITHMS, GUI_CONFIG
 from game.game_controller import GameController
-from config.settings import DIFFICULTY_LEVELS, ALGORITHMS, ALPHABETA_MAX_STICKS
+from game.nim_logic import get_game_info, apply_move
 
 
+# ======================================================
+# SETUP WINDOW
+# ======================================================
 class SetupWindow:
-    """Window untuk setup pertandingan."""
-
     def __init__(self, on_start_callback):
         self.on_start_callback = on_start_callback
-        self.window = tk.Tk()
-        self.window.title("Setup Pertandingan - Game NIM Misère")
-        self.window.geometry("650x750")
-        self.window.resizable(True, True)
+        self.root = tk.Tk()
+        self.root.title("NIM Misère - Setup")
+        self.root.geometry("400x360")
+        self.root.resizable(True, True)
+        self._build_ui()
 
-        # Jika user klik X, tutup app dengan bersih
-        self.window.protocol("WM_DELETE_WINDOW", self.window.destroy)
+    def _build_ui(self):
+        frame = ttk.Frame(self.root, padding=20)
+        frame.pack(fill="both", expand=True)
 
-        self.setup_ui()
+        ttk.Label(frame, text="NIM Misère", font=("Arial", 16, "bold")).pack(pady=10)
 
-    def setup_ui(self):
-        """Setup UI untuk window setup."""
-        # Header
-        header_frame = tk.Frame(self.window, bg="#2c3e50", pady=20)
-        header_frame.pack(fill=tk.X)
+        # Mode
+        ttk.Label(frame, text="Game Mode").pack(anchor="w")
+        self.mode_var = tk.StringVar(value="Komputer_VS_Komputer")
+        ttk.Combobox(
+            frame,
+            textvariable=self.mode_var,
+            values=["Komputer_VS_Komputer", "PLAYER_VS_Komputer"],
+            state="readonly"
+        ).pack(fill="x", pady=5)
 
-        tk.Label(
-            header_frame,
-            text="🎮 Game NIM Misère",
-            font=("Arial", 24, "bold"),
-            bg="#2c3e50",
-            fg="white"
-        ).pack()
-
-        tk.Label(
-            header_frame,
-            text="AI vs AI Battle Arena",
-            font=("Arial", 12),
-            bg="#2c3e50",
-            fg="#ecf0f1"
-        ).pack()
-
-        # Main content
-        content_frame = tk.Frame(self.window, padx=30, pady=20)
-        content_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Info box
-        info_frame = tk.LabelFrame(
-            content_frame,
-            text="ℹ️ Aturan Permainan",
-            font=("Arial", 11, "bold"),
-            padx=15,
-            pady=10
-        )
-        info_frame.pack(fill=tk.X, pady=(0, 20))
-
-        tk.Label(
-            info_frame,
-            text="• Dalam satu giliran, pemain dapat mengambil berapa saja stik\n"
-                 "  dari SATU tumpukan (dari 1 stik sampai semua stik di tumpukan tersebut)\n"
-                 "• Pemain yang mengambil stik TERAKHIR adalah KALAH (Misère variant)\n"
-                 "• Dua AI akan bertanding untuk menentukan siapa yang lebih unggul",
-            font=("Arial", 10),
-            justify=tk.LEFT
-        ).pack()
-
-        # Difficulty selection
-        diff_frame = tk.LabelFrame(
-            content_frame,
-            text="📊 Pilih Level Kesulitan",
-            font=("Arial", 11, "bold"),
-            padx=15,
-            pady=10
-        )
-        diff_frame.pack(fill=tk.X, pady=(0, 15))
-
-        self.difficulty_var = tk.StringVar(value="Medium")
-
-        for level_name, level_info in DIFFICULTY_LEVELS.items():
-            frame = tk.Frame(diff_frame)
-            frame.pack(fill=tk.X, pady=2)
-
-            rb = tk.Radiobutton(
-                frame,
-                text=f"{level_name}",
-                variable=self.difficulty_var,
-                value=level_name,
-                font=("Arial", 10, "bold")
-            )
-            rb.pack(side=tk.LEFT)
-
-            tk.Label(
-                frame,
-                text=f"- {level_info['total_sticks']} stik, {len(level_info['piles'])} tumpukan",
-                font=("Arial", 9),
-                fg="#7f8c8d"
-            ).pack(side=tk.LEFT, padx=(5, 0))
-
-        # Algorithm selection
-        algo_frame = tk.LabelFrame(
-            content_frame,
-            text="🤖 Pilih Algoritma untuk Setiap Player",
-            font=("Arial", 11, "bold"),
-            padx=15,
-            pady=10
-        )
-        algo_frame.pack(fill=tk.X, pady=(0, 15))
+        # Difficulty
+        ttk.Label(frame, text="Difficulty").pack(anchor="w")
+        self.diff_var = tk.StringVar(value="Easy")
+        ttk.Combobox(
+            frame,
+            textvariable=self.diff_var,
+            values=list(DIFFICULTY_LEVELS.keys()),
+            state="readonly"
+        ).pack(fill="x", pady=5)
 
         # Player 1
-        p1_frame = tk.Frame(algo_frame)
-        p1_frame.pack(fill=tk.X, pady=5)
-
-        tk.Label(
-            p1_frame,
-            text="Player 1 (🔴 Merah):",
-            font=("Arial", 10, "bold"),
-            width=20,
-            anchor=tk.W
-        ).pack(side=tk.LEFT)
-
-        self.player1_var = tk.StringVar(value="Reflex")
-        for algo_name in ALGORITHMS.keys():
-            tk.Radiobutton(
-                p1_frame,
-                text=algo_name,
-                variable=self.player1_var,
-                value=algo_name,
-                font=("Arial", 9)
-            ).pack(side=tk.LEFT, padx=5)
+        ttk.Label(frame, text="Player 1").pack(anchor="w")
+        self.p1_algo = tk.StringVar(value="Reflex")
+        ttk.Combobox(
+            frame,
+            textvariable=self.p1_algo,
+            values=list(ALGORITHMS.keys()),
+            state="readonly"
+        ).pack(fill="x", pady=5)
 
         # Player 2
-        p2_frame = tk.Frame(algo_frame)
-        p2_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(frame, text="Player 2").pack(anchor="w")
+        self.p2_algo = tk.StringVar(value="Alpha-Beta")
+        ttk.Combobox(
+            frame,
+            textvariable=self.p2_algo,
+            values=list(ALGORITHMS.keys()),
+            state="readonly"
+        ).pack(fill="x", pady=5)
 
-        tk.Label(
-            p2_frame,
-            text="Player 2 (🔵 Biru):",
-            font=("Arial", 10, "bold"),
-            width=20,
-            anchor=tk.W
-        ).pack(side=tk.LEFT)
+        ttk.Button(frame, text="Start Match", command=self.start).pack(pady=15)
 
-        self.player2_var = tk.StringVar(value="Alpha-Beta")
-        for algo_name in ALGORITHMS.keys():
-            tk.Radiobutton(
-                p2_frame,
-                text=algo_name,
-                variable=self.player2_var,
-                value=algo_name,
-                font=("Arial", 9)
-            ).pack(side=tk.LEFT, padx=5)
-
-        # Auto-play settings
-        autoplay_frame = tk.LabelFrame(
-            content_frame,
-            text="⚙️ Pengaturan Tambahan",
-            font=("Arial", 11, "bold"),
-            padx=15,
-            pady=10
-        )
-        autoplay_frame.pack(fill=tk.X, pady=(0, 20))
-
-        self.autoplay_var = tk.BooleanVar(value=True)
-        tk.Checkbutton(
-            autoplay_frame,
-            text="Auto-play (langkah otomatis tanpa tombol)",
-            variable=self.autoplay_var,
-            font=("Arial", 10)
-        ).pack(anchor=tk.W)
-
-        speed_frame = tk.Frame(autoplay_frame)
-        speed_frame.pack(fill=tk.X, pady=(10, 0))
-
-        tk.Label(
-            speed_frame,
-            text="Delay antar langkah:",
-            font=("Arial", 9)
-        ).pack(side=tk.LEFT)
-
-        self.speed_var = tk.IntVar(value=500)
-        speed_scale = tk.Scale(
-            speed_frame,
-            from_=100,
-            to=2000,
-            variable=self.speed_var,
-            orient=tk.HORIZONTAL,
-            length=200,
-            resolution=100
-        )
-        speed_scale.pack(side=tk.LEFT, padx=10)
-
-        tk.Label(
-            speed_frame,
-            text="ms",
-            font=("Arial", 9)
-        ).pack(side=tk.LEFT)
-
-        # Start button (dibikin nempel bawah biar selalu kelihatan)
-        bottom_frame = tk.Frame(self.window, padx=30, pady=10)
-        bottom_frame.pack(side=tk.BOTTOM, fill=tk.X)
-
-        tk.Button(
-            bottom_frame,
-            text="▶️  Mulai Pertandingan",
-            command=self.start_match,
-            font=("Arial", 14, "bold"),
-            bg="#27ae60",
-            fg="white",
-            padx=40,
-            pady=15,
-            cursor="hand2"
-        ).pack(fill=tk.X)
-
-    def start_match(self):
-        """Callback ketika tombol start diklik."""
-        difficulty_name = self.difficulty_var.get()
-        difficulty = DIFFICULTY_LEVELS[difficulty_name]
-
-        total_sticks = difficulty.get("total_sticks")
-        if total_sticks is None:
-            total_sticks = sum(difficulty.get("piles", []))
-
-        allow_alphabeta = difficulty.get("allow_alphabeta", total_sticks <= ALPHABETA_MAX_STICKS)
-
-        p1 = self.player1_var.get()
-        p2 = self.player2_var.get()
-
-        # Enforce: Alpha-Beta hanya aman untuk state kecil
-        if ("Alpha-Beta" in (p1, p2)) and (not allow_alphabeta or total_sticks > ALPHABETA_MAX_STICKS):
-            messagebox.showwarning(
-                "Alpha-Beta dibatasi",
-                f"Level {difficulty_name} ({total_sticks} stik) terlalu besar untuk Alpha-Beta.\n"
-                "Agar tidak freeze, Alpha-Beta otomatis diganti ke Reflex."
-            )
-            if p1 == "Alpha-Beta":
-                p1 = "Reflex"
-            if p2 == "Alpha-Beta":
-                p2 = "Reflex"
-
+    def start(self):
         settings = {
-            "difficulty": difficulty_name,
-            "player1_algo": p1,
-            "player2_algo": p2,
-            "autoplay": self.autoplay_var.get(),
-            "speed_ms": self.speed_var.get()
+            "mode": self.mode_var.get(),
+            "difficulty": self.diff_var.get(),
+            "player1_algo": self.p1_algo.get(),
+            "player2_algo": self.p2_algo.get()
         }
-
-        self.window.destroy()
+        self.root.destroy()
         self.on_start_callback(settings)
 
-
     def run(self):
-        """Jalankan window."""
-        self.window.mainloop()
+        self.root.mainloop()
 
 
+# ======================================================
+# GAME WINDOW
+# ======================================================
 class GameWindow:
-    """Window untuk menampilkan jalannya pertandingan."""
-
     def __init__(self, settings, on_finish_callback):
         self.settings = settings
         self.on_finish_callback = on_finish_callback
+        self.auto_play = True  # Auto-play aktif by default
 
-        self.window = tk.Tk()
-        self.window.title("Pertandingan Berlangsung - Game NIM Misère")
-        self.window.geometry("900x700")
-
-        # Jika user klik X, perlakukan sebagai stop
-        self.window.protocol("WM_DELETE_WINDOW", self.force_finish)
-
-        # Inisialisasi controller
-        difficulty = DIFFICULTY_LEVELS[settings["difficulty"]]
+        diff = DIFFICULTY_LEVELS[settings["difficulty"]]
         self.controller = GameController(
-            difficulty["piles"],
+            diff["piles"],
             settings["player1_algo"],
             settings["player2_algo"]
         )
 
-        self.is_running = True
+        self.root = tk.Tk()
+        self.root.title("NIM Misère - Game")
+        self.root.geometry("900x720")
+        self.root.resizable(True, True)
 
-        # Tracking after() supaya bisa dibatalkan saat stop/destroy
-        self.autoplay_after_id = None
-        self.start_after_id = None
+        self._build_ui()
+        self._draw_state()
+        
+        # Bind resize event untuk responsif
+        self.root.bind("<Configure>", self._on_resize)
+        
+        # Start auto-play
+        if settings["mode"] == "Komputer_VS_Komputer":
+            self.root.after(500, self._auto_step)
+        elif settings["mode"] == "PLAYER_VS_Komputer":
+            # Langsung cek giliran player di awal
+            self.root.after(300, self._check_player_turn)
 
-        self.setup_ui()
+    # ---------------- UI ----------------
+    def _build_ui(self):
+        # Frame utama
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        
+        # Canvas dengan frame untuk responsif
+        canvas_frame = ttk.Frame(main_frame)
+        canvas_frame.pack(fill="both", expand=True)
+        
+        self.canvas = tk.Canvas(canvas_frame, bg="#0b4f0b", highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
 
-        # Start match (jadwalkan, simpan ID)
-        self.start_after_id = self.window.after(500, self.start_match)
+        # Info text
+        self.info = tk.Text(main_frame, height=6, state="disabled", wrap="word")
+        self.info.pack(fill="x", pady=5)
 
-    def setup_ui(self):
-        """Setup UI untuk window game."""
+        # Button frame
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(pady=5)
+
+        # Tombol berbeda untuk mode berbeda
+        if self.settings["mode"] == "PLAYER_VS_Komputer":
+            # Info label untuk player
+            ttk.Label(btn_frame, text="🎮 Tunggu giliran Anda - Dialog akan muncul otomatis", foreground="blue", font=("Arial", 10, "bold")).pack(side="left", padx=10)
+        else:
+            ttk.Button(btn_frame, text="Next Move", command=self.next_move).pack(side="left", padx=5)
+            self.auto_btn = ttk.Button(btn_frame, text="⏸ Pause Auto Play", command=self.toggle_auto)
+            self.auto_btn.pack(side="left", padx=5)
+
+    def _on_resize(self, event):
+        """Handle window resize untuk redraw"""
+        if hasattr(self, 'controller'):
+            self.root.after(100, self._draw_state)
+
+    # ---------------- GAME LOGIC ----------------
+    def _check_player_turn(self):
+        """Cek apakah giliran player dan tampilkan dialog otomatis"""
+        if self.controller.game_over:
+            return
+            
+        if self.settings["mode"] == "PLAYER_VS_Komputer" and self.controller.current_player == 1:
+            # Giliran player - tampilkan dialog otomatis
+            self.root.after(200, self._player_move_dialog)
+    
+    def toggle_auto(self):
+        self.auto_play = not self.auto_play
+        if self.settings["mode"] == "PLAYER_VS_Komputer":
+            if self.auto_play:
+                self.auto_btn.config(text="▶ Komputer Auto Play (ON)")
+            else:
+                self.auto_btn.config(text="⏸ Komputer Auto Play (OFF)")
+        else:
+            if self.auto_play:
+                self.auto_btn.config(text="⏸ Pause Auto Play")
+                self._auto_step()
+            else:
+                self.auto_btn.config(text="▶ Resume Auto Play")
+
+    def _auto_step(self):
+        if not self.auto_play or self.controller.game_over:
+            return
+        
+        # Di mode PLAYER_VS_AI, auto play hanya untuk AI (player 2)
+        if self.settings["mode"] == "PLAYER_VS_Komputer":
+            if self.controller.current_player == 1:
+                # Giliran player - tampilkan dialog
+                self.root.after(200, self._check_player_turn)
+                return
+        
+        # Execute move
+        self.next_move()
+        
+        # Cek lagi apakah game over setelah move
+        if self.controller.game_over:
+            summary = self.controller.get_match_summary()
+            self.root.after(1000, lambda: self._show_result(summary))
+            return
+            
+        self.root.after(600, self._auto_step)
+
+    def next_move(self):
+        if self.controller.game_over:
+            return  # Jangan proses lagi jika sudah game over
+
+        # PLAYER VS AI - Giliran Player (tidak perlu manual call dialog)
+        if self.settings["mode"] == "PLAYER_VS_Komputer" and self.controller.current_player == 1:
+            return  # Dialog akan dipanggil otomatis oleh _check_player_turn
+
+        # AI move
+        move_info = self.controller.play_one_move()
+        
+        if move_info is None:
+            return
+            
+        self._draw_state()
+        self._log_move(move_info)
+        
+        # Cek apakah game sudah selesai dari move_info
+        if move_info.get("game_over", False):
+            # Game selesai, akan ditangani di _auto_step
+            return
+        
+        # Setelah AI move di PLAYER_VS_AI, cek apakah giliran player
+        if self.settings["mode"] == "PLAYER_VS_AI":
+            if not self.controller.game_over and self.controller.current_player == 1:
+                self.root.after(600, self._check_player_turn)
+            elif not self.controller.game_over and self.controller.current_player == 2:
+                self.root.after(600, self._auto_step)
+
+    def _player_move_dialog(self):
+        # Cek apakah memang giliran player
+        if self.controller.current_player != 1:
+            return
+            
+        if self.controller.game_over:
+            return
+        
+        # Cek apakah dialog sudah terbuka
+        if hasattr(self, 'player_dialog') and self.player_dialog and self.player_dialog.winfo_exists():
+            return  # Dialog sudah terbuka, jangan buka lagi
+        
+        state = self.controller.state
+        dialog = tk.Toplevel(self.root)
+        self.player_dialog = dialog  # Simpan referensi
+        dialog.title("🎮 Your Turn!")
+        dialog.geometry("400x550")
+        dialog.resizable(True, True)
+        dialog.grab_set()
+        
+        # Cleanup saat dialog ditutup
+        def on_dialog_close():
+            self.player_dialog = None
+            dialog.destroy()
+        
+        dialog.protocol("WM_DELETE_WINDOW", on_dialog_close)
+        
+        # Main container dengan Canvas untuk scrolling
+        main_container = tk.Frame(dialog, bg="white")
+        main_container.pack(fill="both", expand=True)
+        
+        # Canvas + Scrollbar
+        canvas = tk.Canvas(main_container, bg="white", highlightthickness=0)
+        scrollbar = tk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg="white")
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=380)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Content frame
+        frame = tk.Frame(scrollable_frame, bg="white", padx=20, pady=20)
+        frame.pack(fill="both", expand=True)
+
         # Header
-        header_frame = tk.Frame(self.window, bg="#34495e", pady=15)
-        header_frame.pack(fill=tk.X)
+        tk.Label(frame, text="🎮 YOUR TURN!", 
+                font=("Arial", 16, "bold"), 
+                fg="#2c3e50", bg="white").pack(pady=(0, 5))
+        
+        tk.Label(frame, text="Pilih pile dan jumlah korek api", 
+                font=("Arial", 10), 
+                fg="#7f8c8d", bg="white").pack(pady=(0, 15))
 
-        tk.Label(
-            header_frame,
-            text="⚔️ Pertandingan Sedang Berlangsung",
-            font=("Arial", 18, "bold"),
-            bg="#34495e",
-            fg="white"
-        ).pack()
+        pile_var = tk.IntVar(value=0)
+        sticks_var = tk.IntVar(value=1)
 
-        # Info pertandingan
-        info_text = (
-            f"Level: {self.settings['difficulty']} | "
-            f"Player 1: {self.settings['player1_algo']} 🔴 vs "
-            f"Player 2: {self.settings['player2_algo']} 🔵"
-        )
-        tk.Label(
-            header_frame,
-            text=info_text,
-            font=("Arial", 10),
-            bg="#34495e",
-            fg="#ecf0f1"
-        ).pack()
+        # Input section
+        input_frame = tk.LabelFrame(frame, text=" Pilihan Anda ", 
+                                   font=("Arial", 10, "bold"),
+                                   bg="white", fg="#34495e",
+                                   relief="groove", bd=2, padx=15, pady=10)
+        input_frame.pack(fill="x", pady=(0, 10))
+        
+        tk.Label(input_frame, text="Nomor Pile (P0, P1, P2...):", 
+                bg="white", fg="#2c3e50", 
+                font=("Arial", 9)).pack(anchor="w", pady=(5,2))
+        pile_spin = tk.Spinbox(input_frame, from_=0, to=len(state)-1, 
+                              textvariable=pile_var, width=30,
+                              font=("Arial", 10))
+        pile_spin.pack(pady=(0, 10), fill="x")
+        
+        tk.Label(input_frame, text="Jumlah korek api:", 
+                bg="white", fg="#2c3e50",
+                font=("Arial", 9)).pack(anchor="w", pady=(0,2))
+        sticks_spin = tk.Spinbox(input_frame, from_=1, to=max(state) if state else 1, 
+                                textvariable=sticks_var, width=30,
+                                font=("Arial", 10))
+        sticks_spin.pack(pady=(0, 5), fill="x")
+        
+        # Info pile
+        info_frame = tk.LabelFrame(frame, text=" Info Pile Saat Ini ", 
+                                  font=("Arial", 10, "bold"),
+                                  bg="white", fg="#34495e",
+                                  relief="groove", bd=2, padx=15, pady=10)
+        info_frame.pack(fill="x", pady=(0, 15))
+        
+        info_text = "\n".join([f"Pile {i}  →  {s} korek api" for i, s in enumerate(state) if s > 0])
+        tk.Label(info_frame, text=info_text, 
+                font=("Courier", 9), 
+                fg="#27ae60", bg="white",
+                justify="left").pack(anchor="w")
 
-        # Main content
-        main_frame = tk.Frame(self.window)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        def confirm():
+            i = pile_var.get()
+            k = sticks_var.get()
+            
+            if i >= len(state):
+                messagebox.showerror("Error", f"Pile {i} tidak ada!\nPile tersedia: 0-{len(state)-1}")
+                return
+                
+            if state[i] < k or k <= 0:
+                messagebox.showerror("Error", 
+                    f"Move tidak valid!\n\n"
+                    f"Pile {i} punya {state[i]} korek api.\n"
+                    f"Anda mencoba ambil {k} korek api.\n\n"
+                    f"Anda hanya bisa ambil 1-{state[i]} korek api.")
+                return
 
-        # Left: Game state
-        left_frame = tk.LabelFrame(
-            main_frame,
-            text="📊 Status Tumpukan",
-            font=("Arial", 11, "bold"),
-            padx=10,
-            pady=10
-        )
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+            # Apply move
+            self.controller.state = apply_move(self.controller.state, (i, k))
+            self.player_dialog = None
+            dialog.destroy()
+            self._draw_state()
+            
+            # Tambahkan ke move history untuk player
+            self.controller.total_moves += 1
+            player_move_info = {
+                "move_number": self.controller.total_moves,
+                "player": 1,
+                "algorithm": "Human",
+                "move": (i, k),
+                "state_after": self.controller.state.copy(),
+                "stats": {"duration_ms": 0, "nodes_explored": 0}
+            }
+            self.controller.move_history.append(player_move_info)
+            
+            self._log(f"👤 YOU → Pile {i}, ambil {k} korek api")
+            
+            # Cek apakah player yang mengambil batang terakhir (player kalah)
+            if sum(self.controller.state) == 0:
+                # Player mengambil batang terakhir = Player KALAH
+                self.controller.game_over = True
+                self.controller.winner = 2  # AI menang
+                
+                # Hitung waktu akhir
+                if self.controller.match_start_time:
+                    self.controller.match_duration = time.time() - self.controller.match_start_time
+                
+                player_move_info["game_over"] = True
+                player_move_info["winner"] = 2
+                player_move_info["loser"] = 1
+                
+                summary = self.controller.get_match_summary()
+                self.root.after(500, lambda: self._show_result(summary))
+                return
+            
+            # Ganti giliran ke AI
+            self.controller.current_player = 2
+            
+            # AI auto play langsung jalan
+            self.root.after(800, self._auto_step)
 
-        # Scrollable canvas untuk tumpukan
-        canvas_container = tk.Frame(left_frame)
-        canvas_container.pack(fill=tk.BOTH, expand=True)
+        # Buttons
+        btn_frame = tk.Frame(frame, bg="white")
+        btn_frame.pack(fill="x", pady=(5, 15))
+        
+        tk.Button(btn_frame, text="✓ KONFIRMASI", 
+                 command=confirm,
+                 font=("Arial", 11, "bold"),
+                 bg="#27ae60", fg="white",
+                 activebackground="#229954",
+                 activeforeground="white",
+                 relief="raised", bd=3,
+                 cursor="hand2",
+                 padx=20, pady=12).pack(side="left", padx=(0, 5), expand=True, fill="x")
+        
+        tk.Button(btn_frame, text="✗ BATAL", 
+                 command=dialog.destroy,
+                 font=("Arial", 11, "bold"),
+                 bg="#e74c3c", fg="white",
+                 activebackground="#c0392b",
+                 activeforeground="white",
+                 relief="raised", bd=3,
+                 cursor="hand2",
+                 padx=20, pady=12).pack(side="left", padx=(5, 0), expand=True, fill="x")
+        
+        # Enable mousewheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        
+        def _bind_mousewheel(event):
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        def _unbind_mousewheel(event):
+            canvas.unbind_all("<MouseWheel>")
+        
+        canvas.bind('<Enter>', _bind_mousewheel)
+        canvas.bind('<Leave>', _unbind_mousewheel)
+        
+        pile_spin.focus()
+        pile_spin.selection_range(0, tk.END)
 
-        self.state_canvas = tk.Canvas(canvas_container, bg="#ecf0f1")
-        scrollbar = ttk.Scrollbar(canvas_container, orient=tk.VERTICAL, command=self.state_canvas.yview)
+    # ---------------- DRAW ----------------
+    def _draw_state(self):
+        self.canvas.delete("all")
+        
+        canvas_width = self.canvas.winfo_width()
+        canvas_height = self.canvas.winfo_height()
+        
+        if canvas_width <= 1:
+            canvas_width = 900
+        if canvas_height <= 1:
+            canvas_height = 500
 
-        self.state_canvas.configure(yscrollcommand=scrollbar.set)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.state_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-
-        # Current player indicator
-        self.current_player_label = tk.Label(
-            left_frame,
-            text="",
-            font=("Arial", 11, "bold"),
-            pady=10
-        )
-        self.current_player_label.pack()
-
-        # Right: Log
-        right_frame = tk.LabelFrame(
-            main_frame,
-            text="📝 Log Pertandingan",
-            font=("Arial", 11, "bold"),
-            padx=10,
-            pady=10
-        )
-        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0))
-
-        self.log_text = scrolledtext.ScrolledText(
-            right_frame,
-            font=("Courier", 9),
-            wrap=tk.WORD,
-            state=tk.DISABLED
-        )
-        self.log_text.pack(fill=tk.BOTH, expand=True)
-
-        # Bottom: Controls
-        control_frame = tk.Frame(self.window, pady=10)
-        control_frame.pack(fill=tk.X, padx=10)
-
-        if not self.settings["autoplay"]:
-            self.next_button = tk.Button(
-                control_frame,
-                text="⏭️ Langkah Berikutnya",
-                command=self.next_step,
-                font=("Arial", 11, "bold"),
-                bg="#3498db",
-                fg="white",
-                padx=20,
-                pady=10
-            )
-            self.next_button.pack(side=tk.LEFT, padx=5)
-
-        self.stop_button = tk.Button(
-            control_frame,
-            text="⏹️ Hentikan & Lihat Hasil",
-            command=self.force_finish,
-            font=("Arial", 11),
-            bg="#e74c3c",
-            fg="white",
-            padx=20,
-            pady=10
-        )
-        self.stop_button.pack(side=tk.LEFT, padx=5)
-
-    def _cancel_after_jobs(self):
-        """Batalkan semua after() yang terjadwal untuk mencegah callback menembak window yang sudah ditutup."""
-        for job_id_attr in ("autoplay_after_id", "start_after_id"):
-            job_id = getattr(self, job_id_attr, None)
-            if job_id is not None:
-                try:
-                    self.window.after_cancel(job_id)
-                except Exception:
-                    pass
-                setattr(self, job_id_attr, None)
-
-    def draw_state(self):
-        """Gambar state tumpukan dalam bentuk text/bar chart."""
-        self.state_canvas.delete("all")
+        self.canvas.create_rectangle(0, 0, canvas_width, canvas_height, fill="#0b4f0b", outline="")
 
         state = self.controller.state
-        max_pile = max(state) if state else 1
-        canvas_width = self.state_canvas.winfo_width()
-        if canvas_width <= 1:
-            canvas_width = 400
+        if not state:
+            return
+            
+        total_piles = len(state)
+        max_sticks = max(state) if state else 1
+        total_sticks = sum(state)
 
-        y_offset = 20
-        row_height = 35
+        base_scale = min(canvas_width / 900, canvas_height / 500)
+        
+        if total_sticks > 50:
+            stick_factor = max(0.3, 1.0 - (total_sticks - 50) / 200)
+            pile_factor = max(0.4, 1.0 - (max_sticks - 10) / 30)
+        elif total_sticks > 30:
+            stick_factor = max(0.5, 1.0 - (total_sticks - 30) / 100)
+            pile_factor = max(0.6, 1.0 - (max_sticks - 7) / 20)
+        else:
+            stick_factor = 1.0
+            pile_factor = 1.0
 
-        for i, pile in enumerate(state):
-            # Label row
-            label = f"Row {i}:"
-            self.state_canvas.create_text(
-                10, y_offset,
-                text=label,
-                anchor=tk.W,
-                font=("Arial", 10, "bold")
-            )
+        match_height = max(20, int(45 * base_scale * stick_factor))
+        match_width = max(3, int(6 * base_scale * stick_factor))
+        head_radius = max(2, int(5 * base_scale * stick_factor))
+        pile_gap = max(15, int(50 * base_scale * pile_factor))
+        row_gap = max(30, int(80 * base_scale * stick_factor))
 
-            # Bar representing pile
-            bar_x_start = 80
-            bar_max_width = max(50, canvas_width - 150)  # clamp agar tidak negatif/kecil
+        center_x = canvas_width // 2
+        base_y = canvas_height - 50
 
-            if pile > 0:
-                bar_width = (pile / max_pile) * bar_max_width
-                self.state_canvas.create_rectangle(
-                    bar_x_start, y_offset - 10,
-                    bar_x_start + bar_width, y_offset + 10,
-                    fill="#3498db",
-                    outline="#2980b9",
-                    width=2
+        pile_data = [(i, count) for i, count in enumerate(state)]
+        pile_data_sorted = sorted(pile_data, key=lambda x: x[1])
+        
+        for display_level, (original_pile_idx, pile_count) in enumerate(pile_data_sorted):
+            if pile_count == 0:
+                continue
+                
+            y = base_y - (len(pile_data_sorted) - 1 - display_level) * row_gap
+            start_x = center_x - (pile_count * pile_gap) // 2
+
+            for j in range(pile_count):
+                x = start_x + j * pile_gap
+
+                self.canvas.create_rectangle(
+                    x - match_width // 2,
+                    y - match_height,
+                    x + match_width // 2,
+                    y,
+                    fill="#f5e28b",
+                    outline=""
                 )
 
-            # Count label
-            count_text = f"{pile} stik"
-            self.state_canvas.create_text(
-                canvas_width - 60, y_offset,
-                text=count_text,
-                anchor=tk.W,
-                font=("Arial", 9)
+                self.canvas.create_oval(
+                    x - head_radius,
+                    y - match_height - head_radius * 2,
+                    x + head_radius,
+                    y - match_height,
+                    fill="#e74c3c",
+                    outline=""
+                )
+            
+            label_font_size = max(8, int(10 * base_scale))
+            self.canvas.create_text(
+                start_x - 35, y - match_height // 2,
+                text=f"P{original_pile_idx}: {pile_count}",
+                fill="white",
+                font=("Arial", label_font_size, "bold"),
+                anchor="e"
+            )
+            
+            self.canvas.create_text(
+                start_x + pile_count * pile_gap + 35, y - match_height // 2,
+                text=f"{pile_count}",
+                fill="yellow",
+                font=("Arial", label_font_size, "bold"),
+                anchor="w"
             )
 
-            y_offset += row_height
-
-        self.state_canvas.config(scrollregion=self.state_canvas.bbox("all"))
-
-    def log_message(self, message):
-        """Tambahkan pesan ke log."""
-        self.log_text.config(state=tk.NORMAL)
-        self.log_text.insert(tk.END, message + "\n")
-        self.log_text.see(tk.END)
-        self.log_text.config(state=tk.DISABLED)
-
-    def start_match(self):
-        """Mulai pertandingan."""
-        # start_after_id sudah “terpakai”
-        self.start_after_id = None
-
-        self.log_message("=" * 50)
-        self.log_message("🎮 PERTANDINGAN DIMULAI")
-        self.log_message(f"Level: {self.settings['difficulty']}")
-        self.log_message(f"Player 1 (🔴): {self.settings['player1_algo']}")
-        self.log_message(f"Player 2 (🔵): {self.settings['player2_algo']}")
-        self.log_message(f"Total Stik: {sum(self.controller.state)}")
-        self.log_message("=" * 50)
-        self.log_message("")
-
-        self.draw_state()
-        self.update_current_player()
-
-        if self.settings["autoplay"]:
-            self.autoplay_after_id = self.window.after(self.settings["speed_ms"], self.auto_play)
-
-    def update_current_player(self):
-        """Update label pemain saat ini."""
-        player = self.controller.current_player
-        algo = self.controller.get_current_algo()
-        color = "#e74c3c" if player == 1 else "#3498db"
-        emoji = "🔴" if player == 1 else "🔵"
-
-        self.current_player_label.config(
-            text=f"Giliran: Player {player} {emoji} ({algo})",
-            fg=color
+        info = get_game_info(state)
+        font_size = max(9, int(12 * base_scale))
+        self.canvas.create_text(
+            20, 20,
+            anchor="nw",
+            fill="white",
+            font=("Arial", font_size, "bold"),
+            text=f"Total sticks: {info['total_sticks']} | Active piles: {info['active_piles']}"
+        )
+        
+        if self.controller.current_player == 1:
+            player_color = "#3498db" if self.settings["mode"] == "PLAYER_VS_Komputer" else "yellow"
+            player_text = "YOU" if self.settings["mode"] == "PLAYER_VS_Komputer" else "Player 1"
+        else:
+            player_color = "#e74c3c"
+            player_text = "Komputer" if self.settings["mode"] == "PLAYER_VS_Komputer" else "Player 2"
+            
+        self.canvas.create_text(
+            canvas_width - 20, 20,
+            anchor="ne",
+            fill=player_color,
+            font=("Arial", font_size, "bold"),
+            text=f"Turn: {player_text}"
         )
 
-    def next_step(self):
-        """Jalankan satu langkah."""
-        if not self.is_running:
-            return
-
-        move_info = self.controller.play_one_move()
-        if move_info:
-            self.process_move(move_info)
-
-    def auto_play(self):
-        """Auto-play untuk pertandingan."""
-        self.autoplay_after_id = None  # job sedang dieksekusi sekarang
-
-        if not self.is_running:
-            return
-
-        self.next_step()
-
-        if self.is_running and not self.controller.game_over:
-            self.autoplay_after_id = self.window.after(self.settings["speed_ms"], self.auto_play)
-
-    def process_move(self, move_info):
-        """Process hasil move."""
-        player = move_info.get("player")
-        player_emoji = "🔴" if player == 1 else "🔵"
-
-        self.log_message(
-            f"Move #{move_info.get('move_number')}: Player {player} {player_emoji} "
-            f"({move_info.get('algorithm')})"
-        )
-
-        move = move_info.get("move")
-        if move is None:
-            note = move_info.get("note", "Move tidak tersedia.")
-            self.log_message(f"  ↳ {note}")
-        else:
-            self.log_message(f"  ↳ Ambil {move[1]} stik dari Row {move[0]}")
-
-        stats = move_info.get("stats") or {}
-        duration = float(stats.get("duration_ms", 0.0))
-        stat_text = f"  ↳ Waktu: {duration:.2f} ms"
-
-        nodes = int(stats.get("nodes_explored", 0))
-        if nodes > 0:
-            stat_text += f", Nodes: {nodes}"
-
-        if stats.get("fallback_used"):
-            stat_text += ", Fallback: YA"
-
-        if stats.get("error"):
-            stat_text += f", Error: {stats.get('error')}"
-
-        self.log_message(stat_text)
-        self.log_message("")
-
-        self.draw_state()
-
-        if move_info.get("game_over"):
-            self.finish_match()
-        else:
-            self.update_current_player()
-
-    def force_finish(self):
-        """Paksa selesai dan tampilkan hasil."""
-        if not self.is_running:
-            return
-
-        self.is_running = False
-        self._cancel_after_jobs()
-
-        if self.controller.game_over:
-            self.finish_match()
-        else:
-            self.log_message("\n⚠️ Pertandingan dihentikan paksa!")
-            self.window.destroy()
-            # Kembali ke setup
-            app = SetupWindow(lambda s: GameWindow(s, self.on_finish_callback).run())
-            app.run()
-
-    def finish_match(self):
-        """Selesaikan pertandingan dan pindah ke result window."""
-        if not self.is_running:
-            # tetap pastikan after dibatalkan
-            self._cancel_after_jobs()
-
-        self.is_running = False
-        self._cancel_after_jobs()
-
-        summary = self.controller.get_match_summary()
-        self.window.destroy()
+    # ---------------- LOG ----------------
+    def _show_result(self, summary):
+        """Tampilkan result window dan tutup game window"""
+        self.root.destroy()
         self.on_finish_callback(summary, self.settings)
+    
+    def _log_move(self, m):
+        self._log(
+            f"Move {m['move_number']} | "
+            f"P{m['player']} ({m['algorithm']}) "
+            f"→ pile {m['move'][0]} take {m['move'][1]}"
+        )
+
+    def _log(self, text):
+        self.info.config(state="normal")
+        self.info.insert("end", text + "\n")
+        self.info.see("end")
+        self.info.config(state="disabled")
 
     def run(self):
-        """Jalankan window."""
-        self.window.mainloop()
+        self.root.mainloop()
 
 
+# ======================================================
+# RESULT WINDOW
+# ======================================================
 class ResultWindow:
-    """Window untuk menampilkan hasil pertandingan."""
-
     def __init__(self, summary, settings):
         self.summary = summary
         self.settings = settings
+        self.root = tk.Tk()
+        self.root.title("🏆 Match Result")
+        self.root.geometry("500x400")
+        self.root.resizable(True, True)
+        self.root.configure(bg="#2c3e50")
+        self._build_ui()
 
-        self.window = tk.Tk()
-        self.window.title("Hasil Pertandingan - Game NIM Misère")
-        self.window.geometry("700x650")
-        self.window.resizable(False, False)
+    def _build_ui(self):
+        main_frame = tk.Frame(self.root, bg="#2c3e50")
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # Jika user klik X, tutup window hasil
-        self.window.protocol("WM_DELETE_WINDOW", self.window.destroy)
-
-        self.setup_ui()
-
-    def setup_ui(self):
-        """Setup UI untuk window hasil."""
-        # Header
-        winner = self.summary['winner']
-        header_bg = "#27ae60" if winner else "#95a5a6"
-
-        header_frame = tk.Frame(self.window, bg=header_bg, pady=20)
-        header_frame.pack(fill=tk.X)
-
+        winner_frame = tk.Frame(main_frame, bg="#27ae60", relief="raised", borderwidth=3)
+        winner_frame.pack(fill="x", pady=(0, 20))
+        
         tk.Label(
-            header_frame,
-            text="🏆 PERTANDINGAN SELESAI",
-            font=("Arial", 22, "bold"),
-            bg=header_bg,
+            winner_frame,
+            text="🏆 WINNER 🏆",
+            font=("Arial", 18, "bold"),
+            bg="#27ae60",
+            fg="white",
+            pady=10
+        ).pack()
+        
+        winner_algo = (self.settings["player1_algo"] if self.summary["winner"] == 1 
+                      else self.settings["player2_algo"])
+        
+        tk.Label(
+            winner_frame,
+            text=f"Player {self.summary['winner']}",
+            font=("Arial", 28, "bold"),
+            bg="#27ae60",
             fg="white"
         ).pack()
+        
+        tk.Label(
+            winner_frame,
+            text=f"({winner_algo})",
+            font=("Arial", 14),
+            bg="#27ae60",
+            fg="white",
+            pady=5
+        ).pack()
 
-        if winner:
-            winner_algo = self.summary[f'player{winner}']['algorithm']
-            winner_emoji = "🔴" if winner == 1 else "🔵"
-            tk.Label(
-                header_frame,
-                text=f"Pemenang: Player {winner} {winner_emoji} ({winner_algo})",
-                font=("Arial", 14),
-                bg=header_bg,
-                fg="white"
-            ).pack()
-
-        # Main content
-        content_frame = tk.Frame(self.window, padx=30, pady=20)
-        content_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Match info
-        info_frame = tk.LabelFrame(
-            content_frame,
-            text="📊 Ringkasan Pertandingan",
-            font=("Arial", 12, "bold"),
-            padx=15,
+        stats_frame = tk.Frame(main_frame, bg="#34495e", relief="groove", borderwidth=2)
+        stats_frame.pack(fill="both", expand=True, pady=(0, 15))
+        
+        tk.Label(
+            stats_frame,
+            text="Match Statistics",
+            font=("Arial", 14, "bold"),
+            bg="#34495e",
+            fg="white",
             pady=10
-        )
-        info_frame.pack(fill=tk.X, pady=(0, 15))
-
-        info_data = [
-            ("Level:", self.settings['difficulty']),
-            ("Total Langkah:", str(self.summary['total_moves'])),
-            ("Durasi Match:", f"{self.summary['match_duration_sec']:.2f} detik")
+        ).pack()
+        
+        stats = [
+            ("Total Moves:", self.summary['total_moves']),
+            ("Duration:", f"{self.summary['match_duration_sec']:.2f} seconds"),
+            ("Difficulty:", self.settings['difficulty']),
+            ("Game Mode:", self.settings['mode'])
         ]
-
-        for label, value in info_data:
-            row = tk.Frame(info_frame)
-            row.pack(fill=tk.X, pady=3)
-            tk.Label(row, text=label, font=("Arial", 10, "bold"), width=15, anchor=tk.W).pack(side=tk.LEFT)
-            tk.Label(row, text=value, font=("Arial", 10), anchor=tk.W).pack(side=tk.LEFT)
-
-        # Player statistics
-        for player_num in [1, 2]:
-            player_data = self.summary[f'player{player_num}']
-            is_winner = (player_num == self.summary['winner'])
-
-            emoji = "🔴" if player_num == 1 else "🔵"
-            trophy = " 🏆" if is_winner else ""
-
-            player_frame = tk.LabelFrame(
-                content_frame,
-                text=f"{emoji} Player {player_num} - {player_data['algorithm']}{trophy}",
-                font=("Arial", 11, "bold"),
-                padx=15,
-                pady=10
-            )
-            player_frame.pack(fill=tk.X, pady=(0, 10))
-
-            stats = [
-                ("Jumlah Langkah:", f"{player_data['moves_count']} moves"),
-                ("Total Waktu:", f"{player_data['total_time_ms']:.2f} ms"),
-                ("Rata-rata Waktu:", f"{player_data['avg_time_ms']:.2f} ms/move"),
-                ("Total Nodes Explored:", f"{player_data['total_nodes']:,}")
-            ]
-
-            for label, value in stats:
-                row = tk.Frame(player_frame)
-                row.pack(fill=tk.X, pady=2)
-                tk.Label(row, text=label, font=("Arial", 9), width=20, anchor=tk.W).pack(side=tk.LEFT)
-                tk.Label(row, text=value, font=("Arial", 9, "bold"), anchor=tk.W).pack(side=tk.LEFT)
-
-        # Conclusion
-        if winner:
-            loser = self.summary['loser']
-            loser_algo = self.summary[f'player{loser}']['algorithm']
-            loser_emoji = "🔴" if loser == 1 else "🔵"
-
-            conclusion_frame = tk.Frame(content_frame, bg="#ecf0f1", padx=15, pady=15)
-            conclusion_frame.pack(fill=tk.X, pady=(10, 15))
-
+        
+        for label, value in stats:
+            row = tk.Frame(stats_frame, bg="#34495e")
+            row.pack(fill="x", padx=20, pady=3)
+            
             tk.Label(
-                conclusion_frame,
-                text=f"💔 Player {loser} {loser_emoji} ({loser_algo}) mengambil stik terakhir dan KALAH",
+                row,
+                text=label,
+                font=("Arial", 11),
+                bg="#34495e",
+                fg="#bdc3c7",
+                anchor="w"
+            ).pack(side="left")
+            
+            tk.Label(
+                row,
+                text=str(value),
+                font=("Arial", 11, "bold"),
+                bg="#34495e",
+                fg="white",
+                anchor="e"
+            ).pack(side="right")
+
+        players_frame = tk.Frame(main_frame, bg="#2c3e50")
+        players_frame.pack(fill="x", pady=(0, 15))
+        
+        for i, algo in enumerate([self.settings['player1_algo'], self.settings['player2_algo']], 1):
+            color = "#27ae60" if i == self.summary['winner'] else "#95a5a6"
+            player_label = tk.Label(
+                players_frame,
+                text=f"Player {i}: {algo}",
                 font=("Arial", 10),
-                bg="#ecf0f1",
-                fg="#7f8c8d",
-                wraplength=600,
-                justify=tk.CENTER
-            ).pack()
-
-        # Buttons
-        button_frame = tk.Frame(content_frame)
-        button_frame.pack(pady=10)
+                bg="#2c3e50",
+                fg=color
+            )
+            player_label.pack()
 
         tk.Button(
-            button_frame,
-            text="🔄 Pertandingan Baru",
-            command=self.new_match,
+            main_frame,
+            text="Close",
+            command=self.root.destroy,
             font=("Arial", 12, "bold"),
-            bg="#3498db",
+            bg="#e74c3c",
             fg="white",
+            activebackground="#c0392b",
+            activeforeground="white",
+            relief="raised",
+            borderwidth=2,
+            cursor="hand2",
             padx=30,
-            pady=12
-        ).pack(side=tk.LEFT, padx=5)
-
-        tk.Button(
-            button_frame,
-            text="❌ Keluar",
-            command=self.window.destroy,  # lebih bersih daripada quit untuk multi-window
-            font=("Arial", 12),
-            bg="#95a5a6",
-            fg="white",
-            padx=30,
-            pady=12
-        ).pack(side=tk.LEFT, padx=5)
-
-    def new_match(self):
-        """Mulai pertandingan baru."""
-        self.window.destroy()
-        app = SetupWindow(lambda s: GameWindow(s, lambda summary, settings: ResultWindow(summary, settings).run()).run())
-        app.run()
+            pady=10
+        ).pack(pady=10)
 
     def run(self):
-        """Jalankan window."""
-        self.window.mainloop()
+        self.root.mainloop()
