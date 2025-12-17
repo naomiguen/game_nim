@@ -21,7 +21,7 @@ DIFFICULTY_LEVELS = {
     },
     "Extreme": {
         "description": "Tantangan ekstrem dengan 2000 stik",
-        "piles": [50, 100, 150, 200, 250, 300, 350, 400, 450, 500],  # ← Terurut
+        "piles": [50, 100, 150, 200, 250, 300, 350, 400, 450, 500],  
         "total_sticks": 2750
     }
 }

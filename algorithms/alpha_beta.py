@@ -1,6 +1,6 @@
 """
 Algoritma Alpha-Beta Pruning untuk NIM Misere
-Optimasi: Memoization + Depth Limit + Heuristic Evaluation + Recursion Limit Fix
+Optimasi: Memoization (Symmetry Reduction) + Depth Limit + Heuristic + Recursion Fix
 """
 
 import time
@@ -32,7 +32,7 @@ class AlphaBetaAgent:
     def heuristic_value(self, state, is_max_turn):
         """
         Menilai kondisi papan menggunakan rumus matematika (Reflex) 
-        jika kedalaman pencarian sudah mentok.
+        jika kedalaman pencarian sudah mentok (Depth Limit Reached).
         """
         ones = sum(1 for p in state if p == 1)
         bigs = sum(1 for p in state if p > 1)
@@ -41,16 +41,15 @@ class AlphaBetaAgent:
         # Logika Misere (Sama seperti Reflex Agent)
         is_winning = False
         if bigs == 0:
-            # End Game: Menang jika jumlah tumpukan GENAP (karena kita ingin sisakan ganjil buat lawan)
-            # Tapi tunggu, di sini giliran KITA. Jika sisa GENAP, kita ambil 1, sisa GANJIL buat lawan.
-            # Lawan ambil terakhir -> Lawan kalah -> Kita Menang.
+            # End Game: Menang jika jumlah tumpukan GENAP 
+            # (Karena kita ambil 1, sisa ganjil buat lawan -> Lawan ambil terakhir)
+            # Logika: Jika sisa 'ones' genap, dan giliran kita, kita bisa bikin jadi ganjil (menang).
             is_winning = (ones % 2 == 0)
         else:
             # Normal Game: Menang jika NIM-SUM != 0
             is_winning = (nim_s != 0)
 
-        # Jika menurut rumus kita menang:
-        # Jika giliran MAX (AI), return 1. Jika giliran MIN (Lawan), return -1.
+        # Return nilai (+1 jika Max menang, -1 jika Min menang)
         if is_winning:
             return 1 if is_max_turn else -1
         else:
@@ -59,24 +58,28 @@ class AlphaBetaAgent:
     def alphabeta(self, state, is_max_turn, alpha, beta, depth):
         self.nodes_explored += 1
         
-        state_key = (tuple(state), is_max_turn)
+        # 2. OPTIMASI SYMMETRY: Gunakan sorted()
+        # Agar [10, 50] dan [50, 10] dianggap state yang sama di memori.
+        state_key = (tuple(sorted(state)), is_max_turn)
 
+        # Cek memori (Cache)
         if state_key in self.memo:
             return self.memo[state_key]
 
         if is_terminal(state):
             return 1 if is_max_turn else -1
         
-        # 2. DEPTH LIMIT CHECK
-        # Jika sudah berpikir terlalu dalam (melebihi batas), stop berpikir
-        # dan gunakan insting matematika (heuristic)
+        # 3. DEPTH LIMIT CHECK
+        # Jika sudah berpikir terlalu dalam, stop dan pakai insting (heuristic)
         if depth <= 0:
-            return self.heuristic_value(state, is_max_turn)
+            val = self.heuristic_value(state, is_max_turn)
+            self.memo[state_key] = val
+            return val
 
         moves = get_moves(state)
         
         # Urutkan moves: ambil stik terbanyak dulu (optimasi pruning)
-        # Tapi jika depth tinggal sedikit, random aja biar cepat
+        # Jika depth tinggal sedikit, random aja biar cepat, tapi jika masih awal, sort penting.
         if depth > 2:
             moves.sort(key=lambda x: x[1], reverse=True)
 
@@ -84,7 +87,7 @@ class AlphaBetaAgent:
             value = float('-inf')
             for move in moves:
                 next_state = apply_move(state, move)
-                # Kurangi depth setiap rekursi
+                # Panggil rekursif dengan depth berkurang
                 val = self.alphabeta(next_state, False, alpha, beta, depth - 1)
                 value = max(value, val)
                 alpha = max(alpha, value)
@@ -102,6 +105,7 @@ class AlphaBetaAgent:
                     self.pruning_count += 1
                     break
         
+        # Simpan ke memori
         self.memo[state_key] = value
         return value
 
@@ -113,18 +117,19 @@ class AlphaBetaAgent:
         best_move = None
         
         moves = get_moves(state)
-        # Sorting moves di level teratas sangat penting
+        # Sorting moves di level teratas SANGAT PENTING agar langsung cek "Ambil Semua"
         moves.sort(key=lambda x: x[1], reverse=True)
 
         alpha = float('-inf')
         beta = float('inf')
 
-        # Tentukan kedalaman dinamis berdasarkan kompleksitas
-        # Jika stik sedikit, depth dalam. Jika stik ribuan, depth dangkal.
+        # Tentukan kedalaman dinamis
         total_sticks = sum(state)
         current_depth_limit = self.max_depth
+        
+        # Jika stik sangat banyak (>500), kurangi kedalaman agar tidak lemot
         if total_sticks > 500:
-            current_depth_limit = 100  # Kurangi depth jika stik sangat banyak
+            current_depth_limit = 100 
 
         for move in moves:
             next_state = apply_move(state, move)

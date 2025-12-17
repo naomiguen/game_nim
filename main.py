@@ -1,8 +1,3 @@
-# main.py
-"""
-Entry point untuk Game NIM Misère
-Support 2 mode: Pemain vs Komputer & Komputer vs Komputer
-"""
 
 from gui.game_gui import SetupWindow, GameWindow, ResultWindow
 
