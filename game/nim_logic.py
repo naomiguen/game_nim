@@ -46,9 +46,17 @@ def apply_move(state, move):
         List: State baru setelah move diterapkan
     """
     i, k = move
+
+    # Validasi: pastikan hanya satu pile dan jumlah legal
+    if not (0 <= i < len(state)):
+        raise ValueError(f"Invalid pile index: {i}")
+    if k <= 0 or k > state[i]:
+        raise ValueError(f"Invalid move: cannot take {k} from pile {i} with {state[i]} sticks")
+
     new_state = state.copy()
     new_state[i] -= k
     return new_state
+
 
 
 def get_game_info(state):

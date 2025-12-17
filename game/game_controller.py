@@ -3,7 +3,7 @@ Controller untuk menjalankan pertandingan komputer vs komputer
 """
 
 import time
-from game.nim_logic import is_terminal, apply_move
+from game.nim_logic import is_terminal, apply_move, get_moves
 from algorithms.reflex import reflex_move
 from algorithms.alpha_beta import alphabeta_move
 
@@ -82,7 +82,13 @@ class GameController:
         move, stats = algo_func(self.state)
         
         # Terapkan move
-        self.state = apply_move(self.state, move)
+        try:
+            self.state = apply_move(self.state, move)
+        except ValueError as e:
+            print(f"[ERROR MOVE] {e}")
+            # fallback: lewati giliran atau pakai move random valid
+            valid_moves = get_moves(self.state)
+            self.state = apply_move(self.state, valid_moves[0])
         self.total_moves += 1
         
         # Simpan history

@@ -59,7 +59,7 @@ class AlphaBetaAgent:
     def alphabeta(self, state, is_max_turn, alpha, beta, depth):
         self.nodes_explored += 1
         
-        state_key = (tuple(sorted(state)), is_max_turn)
+        state_key = (tuple(state), is_max_turn)
 
         if state_key in self.memo:
             return self.memo[state_key]

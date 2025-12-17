@@ -89,6 +89,8 @@ class GameWindow:
         self.settings = settings
         self.on_finish_callback = on_finish_callback
         self.auto_play = True  # Auto-play aktif by default
+        self._auto_after_id = None
+
 
         diff = DIFFICULTY_LEVELS[settings["difficulty"]]
         self.controller = GameController(
@@ -110,7 +112,7 @@ class GameWindow:
         
         # Start auto-play
         if settings["mode"] == "Komputer_VS_Komputer":
-            self.root.after(500, self._auto_step)
+            self._schedule_auto_step(500)
         elif settings["mode"] == "PLAYER_VS_Komputer":
             # Langsung cek giliran player di awal
             self.root.after(300, self._check_player_turn)
@@ -149,6 +151,20 @@ class GameWindow:
         """Handle window resize untuk redraw"""
         if hasattr(self, 'controller'):
             self.root.after(100, self._draw_state)
+    
+    def _cancel_auto_job(self):
+        if self._auto_after_id is not None:
+            try:
+                self.root.after_cancel(self._auto_after_id)
+            except Exception:
+                pass
+            self._auto_after_id = None
+
+    def _schedule_auto_step(self, delay_ms):
+        """Jadwalkan _auto_step dengan aman (tanpa tumpuk timer)."""
+        self._cancel_auto_job()
+        self._auto_after_id = self.root.after(delay_ms, self._auto_step)
+
 
     # ---------------- GAME LOGIC ----------------
     def _check_player_turn(self):
@@ -162,68 +178,68 @@ class GameWindow:
     
     def toggle_auto(self):
         self.auto_play = not self.auto_play
-        if self.settings["mode"] == "PLAYER_VS_Komputer":
-            if self.auto_play:
-                self.auto_btn.config(text="▶ Komputer Auto Play (ON)")
-            else:
-                self.auto_btn.config(text="⏸ Komputer Auto Play (OFF)")
+        if not hasattr(self, "auto_btn"):
+            return
+
+        if self.auto_play:
+            self.auto_btn.config(text="⏸ Pause Auto Play")
+            self._schedule_auto_step(0)
         else:
-            if self.auto_play:
-                self.auto_btn.config(text="⏸ Pause Auto Play")
-                self._auto_step()
-            else:
-                self.auto_btn.config(text="▶ Resume Auto Play")
+            self.auto_btn.config(text="▶ Resume Auto Play")
+            self._cancel_auto_job()
 
     def _auto_step(self):
+        # Karena callback ini sedang jalan, id timer-nya dianggap selesai
+        self._auto_after_id = None
+
         if not self.auto_play or self.controller.game_over:
             return
-        
-        # Di mode PLAYER_VS_AI, auto play hanya untuk AI (player 2)
+
+        # PLAYER_VS_Komputer: auto hanya untuk AI (player 2)
         if self.settings["mode"] == "PLAYER_VS_Komputer":
             if self.controller.current_player == 1:
-                # Giliran player - tampilkan dialog
                 self.root.after(200, self._check_player_turn)
                 return
-        
-        # Execute move
+
+        # Execute 1 move
         self.next_move()
-        
-        # Cek lagi apakah game over setelah move
+
         if self.controller.game_over:
             summary = self.controller.get_match_summary()
             self.root.after(1000, lambda: self._show_result(summary))
             return
-            
-        self.root.after(600, self._auto_step)
+
+        # Jadwalkan lagi (AMAN: tidak dobel)
+        self._schedule_auto_step(600)
 
     def next_move(self):
         if self.controller.game_over:
             return  # Jangan proses lagi jika sudah game over
 
-        # PLAYER VS AI - Giliran Player (tidak perlu manual call dialog)
+        # PLAYER VS Komputer - Giliran Player: dialog dipanggil otomatis oleh _check_player_turn
         if self.settings["mode"] == "PLAYER_VS_Komputer" and self.controller.current_player == 1:
-            return  # Dialog akan dipanggil otomatis oleh _check_player_turn
+            return
 
-        # AI move
+        # AI move (untuk Komputer_VS_Komputer atau giliran AI di PLAYER_VS_Komputer)
         move_info = self.controller.play_one_move()
-        
         if move_info is None:
             return
-            
+
         self._draw_state()
         self._log_move(move_info)
-        
-        # Cek apakah game sudah selesai dari move_info
+
+        # Jika game over, _auto_step yang akan handle show result
         if move_info.get("game_over", False):
-            # Game selesai, akan ditangani di _auto_step
             return
-        
-        # Setelah AI move di PLAYER_VS_AI, cek apakah giliran player
-        if self.settings["mode"] == "PLAYER_VS_AI":
-            if not self.controller.game_over and self.controller.current_player == 1:
+
+        # Setelah AI move di PLAYER_VS_Komputer, jika giliran balik ke player, panggil dialog check
+        if self.settings["mode"] == "PLAYER_VS_Komputer":
+            if self.controller.current_player == 1 and not self.controller.game_over:
                 self.root.after(600, self._check_player_turn)
-            elif not self.controller.game_over and self.controller.current_player == 2:
-                self.root.after(600, self._auto_step)
+            elif self.controller.current_player == 2 and not self.controller.game_over:
+                # lanjutkan AI auto-step dengan aman (tanpa numpuk timer)
+                self._schedule_auto_step(600)
+
 
     def _player_move_dialog(self):
         # Cek apakah memang giliran player
@@ -382,7 +398,7 @@ class GameWindow:
             self.controller.current_player = 2
             
             # AI auto play langsung jalan
-            self.root.after(800, self._auto_step)
+            self._schedule_auto_step(800)
 
         # Buttons
         btn_frame = tk.Frame(frame, bg="white")
@@ -467,19 +483,28 @@ class GameWindow:
         center_x = canvas_width // 2
         base_y = canvas_height - 50
 
-        pile_data = [(i, count) for i, count in enumerate(state)]
-        pile_data_sorted = sorted(pile_data, key=lambda x: x[1])
-        
-        for display_level, (original_pile_idx, pile_count) in enumerate(pile_data_sorted):
+        pile_data_fixed = list(enumerate(state))  # JANGAN buang pile 0, biar baris tidak geser
+
+        for display_level, (original_pile_idx, pile_count) in enumerate(pile_data_fixed):
+            # y pakai total_piles (konstan), bukan panjang list aktif
+            y = base_y - (total_piles - 1 - display_level) * row_gap
+
+            # Kalau pile 0, tetap tampilkan labelnya biar jelas barisnya ada (opsional tapi sangat membantu)
             if pile_count == 0:
+                label_font_size = max(8, int(10 * base_scale))
+                self.canvas.create_text(
+                    center_x - 50, y,
+                    text=f"P{original_pile_idx}: 0",
+                    fill="#aaaaaa",
+                    font=("Arial", label_font_size, "bold"),
+                    anchor="e"
+                )
                 continue
-                
-            y = base_y - (len(pile_data_sorted) - 1 - display_level) * row_gap
+
             start_x = center_x - (pile_count * pile_gap) // 2
 
             for j in range(pile_count):
                 x = start_x + j * pile_gap
-
                 self.canvas.create_rectangle(
                     x - match_width // 2,
                     y - match_height,
@@ -488,7 +513,6 @@ class GameWindow:
                     fill="#f5e28b",
                     outline=""
                 )
-
                 self.canvas.create_oval(
                     x - head_radius,
                     y - match_height - head_radius * 2,
@@ -497,7 +521,7 @@ class GameWindow:
                     fill="#e74c3c",
                     outline=""
                 )
-            
+
             label_font_size = max(8, int(10 * base_scale))
             self.canvas.create_text(
                 start_x - 35, y - match_height // 2,
@@ -506,7 +530,6 @@ class GameWindow:
                 font=("Arial", label_font_size, "bold"),
                 anchor="e"
             )
-            
             self.canvas.create_text(
                 start_x + pile_count * pile_gap + 35, y - match_height // 2,
                 text=f"{pile_count}",
@@ -514,6 +537,7 @@ class GameWindow:
                 font=("Arial", label_font_size, "bold"),
                 anchor="w"
             )
+
 
         info = get_game_info(state)
         font_size = max(9, int(12 * base_scale))
